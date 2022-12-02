@@ -13,7 +13,7 @@ params = AttrDict(
     data_root = local_config.data_path,
     model_name = 'NN_results/dsbi_lay{model_params.num_fpn_layers}',
     data = AttrDict(
-        get_points = False,
+        get_points = True,
         class_as_6pt=False,    # классификация присутствия каждой точки в рамке отдельно
         batch_size = 12,
         net_hw = (416, 416),
@@ -22,10 +22,16 @@ params = AttrDict(
         train_list_file_names = [
             #r'DSBI/data/val_li2.txt',
             r'DSBI/data/train_li2.txt',
+            r'AngelinaDataset/not_braille/train.txt',
+            r'AngelinaDataset/handwritten/train.txt',
+            r'AngelinaDataset/books/train.txt',
         ],
         val_list_file_names = {
-            'val' :  [r'DSBI/data/val_li2.txt',],
-            'test' :  [r'DSBI/data/test_li2.txt',]
+            'val' :  [r'DSBI/data/val_li2.txt',
+                      r'AngelinaDataset/handwritten/val.txt',
+                      r'AngelinaDataset/books/val.txt',],
+            'test' :  [r'DSBI/data/test_li2.txt',
+                       r'AngelinaDataset/data/test2.txt',]
         }
     ),
     augmentation = AttrDict(

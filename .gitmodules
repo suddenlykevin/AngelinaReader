@@ -4,3 +4,6 @@
 [submodule "AngelinaDataset"]
 	path = AngelinaDataset
 	url = https://github.com/IlyaOvodov/AngelinaDataset
+[submodule "DSBI"]
+	path = DSBI
+	url = https://github.com/IlyaOvodov/DSBI.git
