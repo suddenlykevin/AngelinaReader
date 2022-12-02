@@ -244,7 +244,7 @@ class BrailleSubDataset:
         if rects is None:
             lbl_fn = self.label_files[item]
             rects = self.read_annotation(lbl_fn, width, height)
-            rects = [ (min(r[0], r[2]), min(r[1], r[3]), max(r[0], r[2]), max(r[1], r[3])) + r[4:] for r in rects]
+            rects = [ (min(r[0], r[2]), min(r[1], r[3]), max(r[0], r[2]), max(r[1], r[3])) + tuple(r[4:]) for r in rects]
             rects = [ r for r in rects if r[0] < r[2] and r[1] < r[3]]
             self.rects[item] = rects
 
@@ -329,24 +329,36 @@ def read_LabelMe_annotation(label_filename, get_points):
     :return: list of rect objects. Each rect object is a tuple (left, top, right, bottom, label) where
         left..bottom are in [0,1), label is int in [1..63]
     '''
-    if get_points:
-        raise NotImplementedError("read_annotation get_point mode not implemented for LabelMe annotation")
     with open(label_filename, 'r', encoding='cp1251') as opened_json:
         loaded = json.load(opened_json)
     convert_x = limiting_scaler(loaded["imageWidth"], 1.0)
     convert_y = limiting_scaler(loaded["imageHeight"], 1.0)
-    rects = [(convert_x(min(xvals)),
-              convert_y(min(yvals)),
-              convert_x(max(xvals)),
-              convert_y(max(yvals)),
-              lt.human_label_to_int(label),
-              ) for label, xvals, yvals in
-                    ((shape["label"],
-                      [coords[0] for coords in shape["points"]],
-                      [coords[1] for coords in shape["points"]]
-                     ) for shape in loaded["shapes"]
-                    )
-            ]
+    if get_points:
+        rects = [(convert_x(min(xvals)),
+                convert_y(min(yvals)),
+                convert_x(max(xvals)),
+                convert_y(max(yvals)),
+                0,
+                ) for label, xvals, yvals in
+                        ((shape["label"],
+                        [coords[0] for coords in shape["points"]],
+                        [coords[1] for coords in shape["points"]]
+                        ) for shape in loaded["shapes"]
+                        )
+                ]
+    else:
+        rects = [(convert_x(min(xvals)),
+                convert_y(min(yvals)),
+                convert_x(max(xvals)),
+                convert_y(max(yvals)),
+                lt.human_label_to_int(label),
+                ) for label, xvals, yvals in
+                        ((shape["label"],
+                        [coords[0] for coords in shape["points"]],
+                        [coords[1] for coords in shape["points"]]
+                        ) for shape in loaded["shapes"]
+                        )
+                ]
     return rects
 
 
