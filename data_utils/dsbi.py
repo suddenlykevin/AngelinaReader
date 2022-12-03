@@ -77,6 +77,7 @@ def read_DSBI_annotation(label_filename, width, height, rect_margin, get_points)
     _, _, _, cells = read_txt(label_filename, binary_label=True)
     if cells is not None:
         if get_points:
+            '''
             rects = []
             for cl in cells:
                 w = int((cl.right - cl.left) * rect_margin)
@@ -98,6 +99,14 @@ def read_DSBI_annotation(label_filename, width, height, rect_margin, get_points)
                             yc = cl.bottom
                         top, bottom = yc - h, yc + h
                         rects.append([left / width, top / height, right / width, bottom / height, 0])
+            '''
+            rects = [(
+                 (c.left - rect_margin * (c.right - c.left)) / width,
+                 (c.top - rect_margin * (c.right - c.left)) / height,
+                 (c.right + rect_margin * (c.right - c.left)) / width,
+                 (c.bottom + rect_margin * (c.right - c.left)) / height,
+                 0,
+                 ) for c in cells if c.label != '000000']
         else:
             rects = [(
                 (c.left - rect_margin * (c.right - c.left)) / width,

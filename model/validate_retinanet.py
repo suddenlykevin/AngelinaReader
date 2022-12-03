@@ -77,7 +77,7 @@ def prepare_data(datasets=datasets):
                     rects = None
                     lbl_fn = full_fn.rsplit('.', 1)[0] + '.json'
                     if os.path.isfile(lbl_fn):
-                        rects = data.read_LabelMe_annotation(label_filename=lbl_fn, get_points=False)
+                        rects = data.read_LabelMe_annotation(label_filename=lbl_fn, get_points=True)
                     else:
                         lbl_fn = full_fn.rsplit('.', 1)[0] + '.txt'
                         if os.path.isfile(lbl_fn):
@@ -86,7 +86,7 @@ def prepare_data(datasets=datasets):
                                                               width=img.width,
                                                               height=img.height,
                                                               rect_margin=rect_margin,
-                                                              get_points=False
+                                                              get_points=True
                                                               )
                         else:
                             full_fn = full_fn.rsplit('.', 1)[0] + '+recto.jpg'
@@ -97,7 +97,7 @@ def prepare_data(datasets=datasets):
                                                                   width=img.width,
                                                                   height=img.height,
                                                                   rect_margin=rect_margin,
-                                                                  get_points=False)
+                                                                  get_points=True)
                     if rects is not None:
                         boxes = [r[:4] for r in rects]
                         labels = [r[4] for r in rects]
