@@ -359,6 +359,7 @@ class BrailleInference:
                 boxes = postprocess.transform_rects(boxes, hom)
                 lines = postprocess.boxes_to_lines(boxes, labels, lang=lang)
                 self.refine_lines(lines)
+                print(lines)
                 aug_gt_rects = postprocess.transform_rects(aug_gt_rects, hom)
             if self.verbose >= 2:
                 print("    run_impl.align", timeit.default_timer() - t)
@@ -367,6 +368,25 @@ class BrailleInference:
                 t = timeit.default_timer()
         else:
             hom = None
+
+        print(lines)
+        idx = 0
+        space = PIL.Image.new('RGB', (28, 28), (255, 255, 255))
+        draw = PIL.ImageDraw.Draw(aug_img)
+        for i in range(len(lines)):
+            for ch in lines[i].chars:
+                box = ch.original_box
+                box = (box[0]-2, box[1]-2, box[2]+2, box[3]+2)
+                crop = aug_img.crop(box)
+                for j in range(ch.spaces_before):
+                    space.save(f'{idx}.jpg')
+                    idx += 1
+                # crop.save(f'{idx}.jpg')
+                draw.rectangle(box, outline="red")
+                idx += 1
+            # space.save(f'{idx}.jpg')
+            idx += 1
+        aug_img.show()
 
         results_dict = {
             'image': aug_img,
