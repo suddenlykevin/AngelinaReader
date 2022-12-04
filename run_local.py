@@ -4,7 +4,7 @@
 Local application for Angelina Braille Reader inference
 """
 import argparse
-import os
+import os, time
 from pathlib import Path
 
 import local_config
@@ -55,6 +55,7 @@ else:
                                                repeat_on_aligned=False,
                                                save_development_info=False)
     elif Path(args.input).suffix in ('.jpg', '.jpe', '.jpeg', '.png', '.gif', '.svg', '.bmp'):
+        start = time.time()
         recognizer.run_and_save(args.input, results_dir, target_stem=None,
                                                lang=args.lang, extra_info=None,
                                                draw_refined=recognizer.DRAW_NONE,
@@ -64,6 +65,8 @@ else:
                                                process_2_sides=args.two,
                                                repeat_on_aligned=False,
                                                save_development_info=False)
+        end = time.time()
+        print(f"{end-start}s elapsed")
     else:
         print('Incorrect file extention: ' + Path(args.input).suffix + ' . Only images, .pdf and .zip files allowed')
         exit()
