@@ -4,8 +4,10 @@
 Local application for Angelina Braille Reader inference
 """
 import argparse
-import os, time
+import os, time, sys
 from pathlib import Path
+import os.path as osp
+sys.path.insert(0, osp.dirname(__file__))
 
 import local_config
 import model.infer_retinanet as infer_retinanet
@@ -18,11 +20,11 @@ recognizer = infer_retinanet.BrailleInference(
     create_script=None)
     
 def cropFrom(img, results_dir):
-    recognizer.run_and_save(img, results_dir, target_stem=None,
+    return recognizer.run_and_save(img, results_dir, target_stem=None,
                                                lang="EN", extra_info=None,
                                                draw_refined=recognizer.DRAW_NONE,
                                                remove_labeled_from_filename=False,
-                                               find_orientation=True,
+                                               find_orientation=False,
                                                align_results=True,
                                                process_2_sides=False,
                                                repeat_on_aligned=False,

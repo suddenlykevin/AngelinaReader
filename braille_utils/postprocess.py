@@ -1,8 +1,11 @@
 import cv2
+import sys
 from collections import defaultdict
 from functools import cmp_to_key
 import numpy as np
 import PIL
+import os.path as osp
+sys.path.insert(0, osp.dirname(__file__))
 
 from braille_utils import letters
 from braille_utils import label_tools as lt

@@ -231,7 +231,7 @@ class BrailleInference:
             return None
 
 
-    def run(self, img, lang, draw_refined, find_orientation, process_2_sides, align_results, repeat_on_aligned=True, gt_rects=[]):
+    def run(self, img, lang, results_dir, draw_refined, find_orientation, process_2_sides, align_results, repeat_on_aligned=True, gt_rects=[]):
         """
         :param img: can be 1) PIL.Image 2) filename to image (.jpg etc.) or .pdf file
         """
@@ -252,21 +252,21 @@ class BrailleInference:
             # img.save(Path(results_dir) / 'original_100.jpg', quality=100)
             t = timeit.default_timer()
         if repeat_on_aligned and not process_2_sides:
-            results_dict0 = self.run_impl(img, lang, draw_refined, find_orientation,
+            results_dict0 = self.run_impl(img, lang, results_dir, draw_refined, find_orientation,
                                           process_2_sides=False, align=True, draw=False, gt_rects=gt_rects)
             if self.verbose >= 2:
                 print("run.run_impl_1", timeit.default_timer() - t)
                 # results_dict0['image'].save(Path(results_dir) / 're1.jpg')
                 # results_dict0['image'].save(Path(results_dir) / 're1_100.jpg', quality=100)
                 t = timeit.default_timer()
-            results_dict = self.run_impl(results_dict0['image'], lang, draw_refined, find_orientation=False,
+            results_dict = self.run_impl(results_dict0['image'], lang, results_dir, draw_refined, find_orientation=False,
                                          process_2_sides=process_2_sides, align=False, draw=True,
                                          gt_rects=results_dict0['gt_rects'])
             results_dict['best_idx'] = results_dict0['best_idx']
             results_dict['err_scores'] = results_dict0['err_scores']
             results_dict['homography'] = results_dict0['homography']
         else:
-            results_dict = self.run_impl(img, lang, draw_refined, find_orientation,
+            results_dict = self.run_impl(img, lang, results_dir, draw_refined, find_orientation,
                                          process_2_sides=process_2_sides, align=align_results, draw=True, gt_rects=gt_rects)
         if self.verbose >= 2:
             # results_dict['image'].save(Path(results_dir) / 're2.jpg')
@@ -299,7 +299,67 @@ class BrailleInference:
                 deltas = h * coefs
                 ch.refined_box = (np.array(ch.refined_box) + deltas).tolist()
 
-    def run_impl(self, img, lang, draw_refined, find_orientation, process_2_sides, align, draw, gt_rects=[]):
+    def run_crop(self, img, results_dir, lang, draw_refined, find_orientation, process_2_sides, align, draw, gt_rects=[]):
+        np_img = np.asarray(img)
+        if (len(np_img.shape) > 2 and np_img.shape[2] < 3):  # grayscale -> reduce dim
+            np_img = np_img[:,:,0]
+        aug_img, aug_gt_rects = self.preprocessor.preprocess_and_augment(np_img, gt_rects)
+        aug_img = data.unify_shape(aug_img)
+        input_tensor = self.preprocessor.to_normalized_tensor(aug_img, device=self.impl.device)
+        input_tensor_rotated = torch.tensor(0).to(self.impl.device)
+
+        aug_img_rot = None
+        if find_orientation:
+            np_img_rot = np.rot90(np_img, 1, (0,1))
+            aug_img_rot = self.preprocessor.preprocess_and_augment(np_img_rot)[0]
+            aug_img_rot = data.unify_shape(aug_img_rot)
+            input_tensor_rotated = self.preprocessor.to_normalized_tensor(aug_img_rot, device=self.impl.device)
+
+        if self.verbose >= 2:
+            print("    run_impl.make_batch", timeit.default_timer() - t)
+            t = timeit.default_timer()
+
+        with torch.no_grad():
+            boxes, labels, scores, best_idx, err_score, boxes2, labels2, scores2 = self.impl(
+                input_tensor, input_tensor_rotated, find_orientation=find_orientation, process_2_sides=process_2_sides)
+        if self.verbose >= 2:
+            print("    run_impl.impl", timeit.default_timer() - t)
+            t = timeit.default_timer()
+
+        #boxes = self.refine_boxes(boxes)
+        boxes = boxes.tolist()
+        labels = labels.tolist()
+        scores = scores.tolist()
+        lines = postprocess.boxes_to_lines(boxes, labels, lang = lang)
+        self.refine_lines(lines)
+
+        if process_2_sides:
+            #boxes2 = self.refine_boxes(boxes2)
+            boxes2 = boxes2.tolist()
+            labels2 = labels2.tolist()
+            scores2 = scores2.tolist()
+            lines2 = postprocess.boxes_to_lines(boxes2, labels2, lang=lang)
+            self.refine_lines(lines2)
+
+        aug_img = PIL.Image.fromarray(aug_img if best_idx < OrientationAttempts.ROT90 else aug_img_rot)
+        if best_idx in (OrientationAttempts.ROT180, OrientationAttempts.ROT270):
+            aug_img = aug_img.transpose(PIL.Image.ROTATE_180)
+
+        if align and not process_2_sides:
+            hom = postprocess.find_transformation(lines, (aug_img.width, aug_img.height))
+            if hom is not None:
+                aug_img = postprocess.transform_image(aug_img, hom)
+                boxes = postprocess.transform_rects(boxes, hom)
+                lines = postprocess.boxes_to_lines(boxes, labels, lang=lang)
+                self.refine_lines(lines)
+                print(lines)
+                aug_gt_rects = postprocess.transform_rects(aug_gt_rects, hom)
+                
+        else:
+            hom = None
+
+        
+    def run_impl(self, img, lang, results_dir, draw_refined, find_orientation, process_2_sides, align, draw, gt_rects=[]):
         t = timeit.default_timer()
         np_img = np.asarray(img)
         if (len(np_img.shape) > 2 and np_img.shape[2] < 3):  # grayscale -> reduce dim
@@ -369,31 +429,33 @@ class BrailleInference:
         else:
             hom = None
 
-        print(lines)
         idx = 0
         space = PIL.Image.new('RGB', (28, 28), (255, 255, 255))
         draw = PIL.ImageDraw.Draw(aug_img)
+        crops = []
         for i in range(len(lines)):
             for ch in lines[i].chars:
                 box = ch.original_box
                 box = (box[0]-2, box[1]-2, box[2]+2, box[3]+2)
                 crop = aug_img.crop(box)
                 for j in range(ch.spaces_before):
-                    space.save(f'{idx}.jpg')
+                    space.save(f'{results_dir}/{idx}.jpg')
                     idx += 1
-                # crop.save(f'{idx}.jpg')
-                draw.rectangle(box, outline="red")
+                crop.save(f'{results_dir}/{idx}.jpg')
+                crops.append((idx, ch.original_box))
+                #draw.rectangle(box, outline="red")
                 idx += 1
-            # space.save(f'{idx}.jpg')
+            space.save(f'{results_dir}/{idx}.jpg')
             idx += 1
-        aug_img.show()
+        #aug_img.save(f'{results_dir}/labeled.jpg')
 
         results_dict = {
             'image': aug_img,
             'best_idx': best_idx,
             'err_scores': list([ten.cpu().data.tolist() for ten in err_score]),
             'gt_rects': aug_gt_rects,
-            'homography': hom.tolist() if hom is not None else hom,
+            'homography': hom,
+            'crops': crops,
         }
 
         if draw:
@@ -516,7 +578,7 @@ class BrailleInference:
             img is image, not filename. When target_stem is None, it is taken from img stem.
         """
         t = timeit.default_timer()
-        result_dict = self.run(img, lang=lang, draw_refined=draw_refined,
+        result_dict = self.run(img, lang=lang, results_dir=results_dir, draw_refined=draw_refined,
                                find_orientation=find_orientation,
                                process_2_sides=process_2_sides, align_results=align_results, repeat_on_aligned=repeat_on_aligned)
         if result_dict is None:
@@ -525,36 +587,19 @@ class BrailleInference:
             print("run_and_save.run", timeit.default_timer() - t)
             t = timeit.default_timer()
 
-        os.makedirs(results_dir, exist_ok=True)
-        if target_stem is None:
-            assert isinstance(img, (str, Path))
-            target_stem = Path(img).stem
-        if remove_labeled_from_filename and target_stem.endswith('.labeled'):
-            target_stem = target_stem[: -len('.labeled')]
-        while (Path(results_dir) / (target_stem + '.marked.jpg')).exists():
-            target_stem += "(dup)"
-
-        if save_development_info:
-            protocol_text_path = Path(results_dir) / (target_stem + '.protocol' + '.txt')
-            with open(protocol_text_path, 'w') as f:
-                info = OrderedDict(
-                    ver = '20200816',
-                    best_idx = result_dict['best_idx'],
-                    err_scores = result_dict['err_scores'],
-                    homography = result_dict['homography'],
-                    model_weights = self.impl.model_weights_fn,
-                )
-                if extra_info:
-                    info.update(extra_info)
-                json.dump(info, f, sort_keys=False, indent=4)
-
-        results = [self.save_results(result_dict, False, results_dir, target_stem, save_development_info)]
-        if process_2_sides:
-            results += [self.save_results(result_dict, True, results_dir, target_stem, save_development_info)]
-
-        if self.verbose >= 2:
-            print("run_and_save.save results", timeit.default_timer() - t)
-        return results
+        return result_dict
+    
+    def run_and_crop(self, img, results_dir, target_stem, lang, extra_info, draw_refined,
+                     remove_labeled_from_filename, find_orientation, align_results, process_2_sides, repeat_on_aligned,
+                     save_development_info=True):
+        """
+        :param img: can be 1) PIL.Image 2) filename to image (.jpg etc.) or .pdf file
+        :param target_stem: starting part of result files names (i.e. <target_stem>.protocol.txt etc.) Is used when
+            img is image, not filename. When target_stem is None, it is taken from img stem.
+        """
+        self.run_crop(img, results_dir=results_dir, lang=lang, draw_refined=draw_refined,
+                               find_orientation=find_orientation,
+                               process_2_sides=process_2_sides, align_results=align_results, repeat_on_aligned=repeat_on_aligned)
 
     def process_dir_and_save(self, img_filename_mask, results_dir, lang, extra_info, draw_refined,
                              remove_labeled_from_filename, find_orientation, process_2_sides, align_results,
